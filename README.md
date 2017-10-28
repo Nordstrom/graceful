@@ -1,8 +1,8 @@
 # graceful
 
-[![Build Status](https://travis-ci.org/TV4/graceful.svg?branch=master)](https://travis-ci.org/TV4/graceful)
-[![Go Report Card](https://goreportcard.com/badge/github.com/TV4/graceful)](https://goreportcard.com/report/github.com/TV4/graceful)
-[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/TV4/graceful)
+[![Build Status](https://travis-ci.org/Nordstrom/graceful.svg?branch=master)](https://travis-ci.org/Nordstrom/graceful)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Nordstrom/graceful)](https://goreportcard.com/report/github.com/Nordstrom/graceful)
+[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/Nordstrom/graceful)
 [![License MIT](https://img.shields.io/badge/license-MIT-lightgrey.svg?style=flat)](https://github.com/TV4/graceful#license-mit)
 
 ## Installation
@@ -19,25 +19,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/TV4/graceful"
+	"github.com/Nordstrom/graceful"
 )
 
-type server struct{}
-
-func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(2 * time.Second)
-	w.Write([]byte("Hello!"))
-}
-
 func main() {
-	addr := ":2017"
+  mux := http.NewServeMux()
+  mux.HandleFunc("/hello", func(res http.ResponseWriter, req *http.Request) {
+    res.Write([]byte("Hello World"))
+  })
 
-	log.Printf("Listening on http://0.0.0.0%s\n", addr)
-
-	graceful.ListenAndServe(&http.Server{
-		Addr:    addr,
-		Handler: &server{},
-	})
+  graceful.ListenAndServe(&http.Server{Addr: ":8080", Handler: mux})
 }
 ```
 
