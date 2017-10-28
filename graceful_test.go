@@ -48,9 +48,9 @@ func TestLogListenAndServe(t *testing.T) {
 			signals <- os.Interrupt
 		}()
 
-		LogListenAndServe(&http.Server{
+		ListenAndServe(&http.Server{
 			Addr: ":0", Handler: &testHandler{logger},
-		}, logger)
+		}, Logger(logger))
 
 		s := buf.String()
 
@@ -70,9 +70,9 @@ func TestLogListenAndServe(t *testing.T) {
 			signals <- os.Interrupt
 		}()
 
-		LogListenAndServe(&http.Server{
+		ListenAndServe(&http.Server{
 			Addr: ":0", Handler: &testHandler{},
-		})
+		}, Logger(logger))
 	})
 
 	t.Run("with nil logger", func(t *testing.T) {
@@ -81,9 +81,9 @@ func TestLogListenAndServe(t *testing.T) {
 			signals <- os.Interrupt
 		}()
 
-		LogListenAndServe(&http.Server{
+		ListenAndServe(&http.Server{
 			Addr: ":0", Handler: &testHandler{},
-		}, nil)
+		})
 	})
 }
 

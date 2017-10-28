@@ -6,7 +6,7 @@ Installation
 
 Just go get the package:
 
-    go get -u github.com/TV4/graceful
+    go get -u github.com/Nordstrom/graceful
 
 Usage
 
@@ -21,33 +21,17 @@ A small usage example
         "os"
         "time"
 
-        "github.com/TV4/graceful"
+        "github.com/Nordstrom/graceful"
     )
 
-    type server struct {
-        logger *log.Logger
-    }
+		func main() {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/hello", func(res http.ResponseWriter, req *http.Request) {
+				res.Write([]byte("Hello World"))
+			})
 
-    func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-        time.Sleep(5 * time.Second)
-        w.Write([]byte("Hello!"))
-    }
-
-    func (s *server) Shutdown(ctx context.Context) error {
-        time.Sleep(2 * time.Second)
-        s.logger.Println("Shutdown finished")
-        return nil
-    }
-
-    func main() {
-        graceful.LogListenAndServe(setup(":2017"))
-    }
-
-    func setup(addr string) (*http.Server, *log.Logger) {
-        s := &server{logger: log.New(os.Stdout, "", 0)}
-        return &http.Server{Addr: addr, Handler: s}, s.logger
-    }
-
+			graceful.ListenAndServe(&http.Server{Addr: ":8080", Handler: mux})
+		}
 */
 package graceful
 
@@ -79,15 +63,17 @@ type Shutdowner interface {
 	Shutdown(ctx context.Context) error
 }
 
-// Logger is implemented by *log.Logger
-type Logger interface {
+// LoggerIface is implemented by *log.Logger
+type LoggerIface interface {
 	Printf(format string, v ...interface{})
 	Fatal(...interface{})
 }
 
 // logger is the logger used by the shutdown function
 // (defaults to logging to ioutil.Discard)
-var logger Logger = log.New(ioutil.Discard, "", 0)
+var logger LoggerIface = log.New(ioutil.Discard, "", 0)
+
+var stoppers []func()
 
 // signals is the channel used to signal shutdown
 var signals chan os.Signal
@@ -105,18 +91,42 @@ var (
 	HandlerShutdownFormat = "Shutting down handler with timeout: %ds\n"
 )
 
-// LogListenAndServe logs using the logger and then calls ListenAndServe
-func LogListenAndServe(s Server, loggers ...Logger) {
-	if hs, ok := s.(*http.Server); ok {
-		logger := getLogger(loggers...)
-		logger.Printf(ListeningFormat, hs.Addr)
-	}
+type options struct {
+	logger   LoggerIface
+	stoppers []func()
+}
 
-	ListenAndServe(s)
+// Option is a function that sets an option
+type Option func(*options)
+
+// Logger sets the logger option
+func Logger(logger LoggerIface) Option {
+	return func(opts *options) {
+		opts.logger = logger
+	}
+}
+
+// Stopper adds a stopper function to the options
+func Stopper(stopper func()) Option {
+	return func(opts *options) {
+		opts.stoppers = append(opts.stoppers, stopper)
+	}
+}
+
+func setOptions(o []Option) {
+	var opts = &options{}
+	for _, fn := range o {
+		fn(opts)
+	}
+	if opts.logger != nil {
+		logger = opts.logger
+	}
+	stoppers = opts.stoppers
 }
 
 // ListenAndServe starts the server in a goroutine and then calls Shutdown
-func ListenAndServe(s Server) {
+func ListenAndServe(s Server, o ...Option) {
+	setOptions(o)
 	go func() {
 		if err := s.ListenAndServe(); err != http.ErrServerClosed {
 			logger.Fatal(err)
@@ -146,10 +156,13 @@ func Shutdown(s Shutdowner) {
 
 	<-signals
 
+	for _, s := range stoppers {
+		s()
+	}
 	shutdown(s, logger)
 }
 
-func shutdown(s Shutdowner, logger Logger) {
+func shutdown(s Shutdowner, logger LoggerIface) {
 	if s == nil {
 		return
 	}
@@ -208,16 +221,4 @@ func shutdown(s Shutdowner, logger Logger) {
 			logger.Printf(FinishedFormat, secs)
 		}
 	}
-}
-
-func getLogger(loggers ...Logger) Logger {
-	if len(loggers) > 0 {
-		if logger = loggers[0]; logger != nil {
-			return logger
-		}
-
-		return log.New(ioutil.Discard, "", 0)
-	}
-
-	return log.New(os.Stdout, "", 0)
 }
