@@ -7,7 +7,7 @@
 
 ## Installation
 
-    go get -u github.com/TV4/graceful
+    go get -u github.com/Nordstrom/graceful
 
 ## Usage
 
