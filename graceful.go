@@ -73,7 +73,10 @@ type LoggerIface interface {
 // (defaults to logging to ioutil.Discard)
 var logger LoggerIface = log.New(ioutil.Discard, "", 0)
 
-var stoppers []func()
+var (
+	shutdownHooks []func()
+	listenHooks   []func()
+)
 
 // signals is the channel used to signal shutdown
 var signals chan os.Signal
@@ -92,8 +95,9 @@ var (
 )
 
 type options struct {
-	logger   LoggerIface
-	stoppers []func()
+	logger        LoggerIface
+	shutdownHooks []func()
+	listenHooks   []func()
 }
 
 // Option is a function that sets an option
@@ -106,10 +110,17 @@ func Logger(logger LoggerIface) Option {
 	}
 }
 
-// Stopper adds a stopper function to the options
-func Stopper(stopper func()) Option {
+// OnShutdown adds a shutdown hook function to the options
+func OnShutdown(shutdownHook func()) Option {
 	return func(opts *options) {
-		opts.stoppers = append(opts.stoppers, stopper)
+		opts.shutdownHooks = append(opts.shutdownHooks, shutdownHook)
+	}
+}
+
+// OnListening adds a listen hook function to the options
+func OnListening(listenHook func()) Option {
+	return func(opts *options) {
+		opts.listenHooks = append(opts.listenHooks, listenHook)
 	}
 }
 
@@ -121,7 +132,7 @@ func setOptions(o []Option) {
 	if opts.logger != nil {
 		logger = opts.logger
 	}
-	stoppers = opts.stoppers
+	shutdownHooks = opts.shutdownHooks
 }
 
 // ListenAndServe starts the server in a goroutine and then calls Shutdown
@@ -131,20 +142,29 @@ func ListenAndServe(s Server, o ...Option) {
 		if err := s.ListenAndServe(); err != http.ErrServerClosed {
 			logger.Fatal(err)
 		}
+		runListenHooks()
 	}()
 
 	Shutdown(s)
 }
 
 // ListenAndServeTLS starts the server in a goroutine and then calls Shutdown
-func ListenAndServeTLS(s TLSServer, certFile, keyFile string) {
+func ListenAndServeTLS(s TLSServer, certFile, keyFile string, o ...Option) {
+	setOptions(o)
 	go func() {
 		if err := s.ListenAndServeTLS(certFile, keyFile); err != http.ErrServerClosed {
 			logger.Fatal(err)
 		}
+		runListenHooks()
 	}()
 
 	Shutdown(s)
+}
+
+func runListenHooks() {
+	for _, hook := range listenHooks {
+		hook()
+	}
 }
 
 // Shutdown blocks until os.Interrupt or syscall.SIGTERM received, then
@@ -156,8 +176,8 @@ func Shutdown(s Shutdowner) {
 
 	<-signals
 
-	for _, s := range stoppers {
-		s()
+	for _, hook := range shutdownHooks {
+		hook()
 	}
 	shutdown(s, logger)
 }
